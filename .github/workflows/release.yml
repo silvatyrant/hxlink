@@ -1,3 +1,4 @@
+# Manual release: tag, build and push the image to GHCR, bump the Helm image tag
 name: Release
 
 on:
