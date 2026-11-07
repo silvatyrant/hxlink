@@ -1,0 +1,42 @@
+image:
+  repository: ghcr.io/silvatyrant/hxlink
+  tag: "v0.1.0"
+  pullPolicy: IfNotPresent
+
+# Bulbs to expose, as INDEX=NAME (group slot 1-4 on the controller id below).
+# Slot 1 keeps the original topic/entity names; further slots get a suffix.
+bulbs: "1=Bedroom lamp,2=Megan Bedroom Lamp"
+
+# Controller identity the bulbs are paired with. Only used to seed the state
+# file on first start; afterwards the PVC copy (with the tx counter) wins.
+controller:
+  id: "0x2AD8"
+  index: "1"
+  txInit: "163"
+
+mqtt:
+  host: homeassistant.local
+  port: "1883"
+
+bluetooth:
+  hci: "0"
+  holdMs: "350"
+
+# The USB Bluetooth dongle lives on this node.
+nodeName: k8s-worker
+
+# Set when the GHCR package is private: a sealed dockerconfigjson for ghcr-secret
+# (kubeseal output, the value of encryptedData..dockerconfigjson).
+ghcrSecret:
+  encryptedDockerConfigJson: ""
+
+resources:
+  requests:
+    memory: "32Mi"
+    cpu: "10m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"
+
+state:
+  storageSize: 1Gi

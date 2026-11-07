@@ -1,0 +1,11 @@
+# Controller id + tx counter. Losing this unpairs the bulb from our id (re-pair needed) and replays counters.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hxlink-state
+  namespace: hxlink
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

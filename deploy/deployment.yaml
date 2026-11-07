@@ -1,0 +1,78 @@
+# HOT-PATCH VERSION: runs the stock python image and mounts the code from the
+# `hxlink-code` ConfigMap (see hotpatch.sh). To be replaced by an image + Helm chart + ArgoCD.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hxlink
+  namespace: hxlink
+  labels:
+    app: hxlink
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # one transmitter at a time, one writer of the state file
+  selector:
+    matchLabels:
+      app: hxlink
+  template:
+    metadata:
+      labels:
+        app: hxlink
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k8s-worker # the node with the Bluetooth dongle
+      hostNetwork: true # Bluetooth sockets only exist in the host network namespace
+      initContainers:
+        - name: deps
+          image: python:3.12.8-slim
+          command: [pip, install, --no-cache-dir, --target, /deps, paho-mqtt==2.1.0]
+          volumeMounts:
+            - {name: deps, mountPath: /deps}
+      containers:
+        - name: hxlink
+          image: python:3.12.8-slim
+          command: [python, -m, hxlink.bridge]
+          env:
+            - {name: PYTHONPATH, value: "/app:/deps"}
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+            - {name: PYTHONUNBUFFERED, value: "1"}
+            - {name: HXLINK_STATE, value: /data/state.json}
+            # seed values, used only when the state file doesn't exist yet
+            - {name: HXLINK_ID, value: "0x2AD8"}
+            - {name: HXLINK_INDEX, value: "1"}
+            - {name: HXLINK_TX_INIT, value: "163"}
+            - {name: BULBS, value: "1=Bedroom lamp,2=Megan Bedroom Lamp"}
+            - {name: HCI, value: "0"}
+            - {name: HOLD_MS, value: "350"}
+            - {name: MQTT_HOST, value: homeassistant.local}
+            - {name: MQTT_PORT, value: "1883"}
+            - name: MQTT_USERNAME
+              valueFrom: {secretKeyRef: {name: hxlink-mqtt, key: username}}
+            - name: MQTT_PASSWORD
+              valueFrom: {secretKeyRef: {name: hxlink-mqtt, key: password}}
+          securityContext:
+            capabilities:
+              add: [NET_ADMIN] # Bluetooth management socket
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - test $(( $(date +%s) - $(date -r /tmp/hxlink-heartbeat +%s) )) -lt 90
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 20m, memory: 48Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: code, mountPath: /app/hxlink, readOnly: true}
+            - {name: deps, mountPath: /deps, readOnly: true}
+            - {name: state, mountPath: /data}
+      volumes:
+        - name: code
+          configMap: {name: hxlink-code}
+        - name: deps
+          emptyDir: {}
+        - name: state
+          persistentVolumeClaim: {claimName: hxlink-state}

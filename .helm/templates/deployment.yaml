@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hxlink
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "hxlink.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # one process owns the dongle and the tx counter
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hxlink
+  template:
+    metadata:
+      labels:
+        app: hxlink
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ .Values.nodeName }}
+      # the kernel Bluetooth management socket is only reachable from the host network namespace
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- if .Values.ghcrSecret.encryptedDockerConfigJson }}
+      imagePullSecrets:
+        - name: ghcr-secret
+      {{- end }}
+      containers:
+        - name: hxlink
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: HXLINK_STATE
+              value: /data/state.json
+            # seed values, used only when the state file doesn't exist yet
+            - name: HXLINK_ID
+              value: {{ .Values.controller.id | quote }}
+            - name: HXLINK_INDEX
+              value: {{ .Values.controller.index | quote }}
+            - name: HXLINK_TX_INIT
+              value: {{ .Values.controller.txInit | quote }}
+            - name: BULBS
+              value: {{ .Values.bulbs | quote }}
+            - name: HCI
+              value: {{ .Values.bluetooth.hci | quote }}
+            - name: HOLD_MS
+              value: {{ .Values.bluetooth.holdMs | quote }}
+            - name: MQTT_HOST
+              value: {{ .Values.mqtt.host | quote }}
+            - name: MQTT_PORT
+              value: {{ .Values.mqtt.port | quote }}
+            - name: MQTT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: hxlink-mqtt
+                  key: username
+            - name: MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hxlink-mqtt
+                  key: password
+          volumeMounts:
+            - name: state
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          # the bridge touches this file every 15 s while connected to the broker
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/hxlink-heartbeat') < 90 else 1)"
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: hxlink-state
+      restartPolicy: Always

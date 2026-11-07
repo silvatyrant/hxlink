@@ -1,0 +1,6 @@
+apiVersion: v2
+name: hxlink
+description: MQTT to BLE bridge that lets Home Assistant control DXC Hxlight bulbs
+type: application
+version: 0.1.0
+appVersion: "v0.1.0"
